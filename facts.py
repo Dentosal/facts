@@ -1,182 +1,157 @@
-import os
+#!/usr/bin/env python3
 import sys
-import json
+import os.path
+import argparse
 import tempfile
-import tarfile
-import requests
-import subprocess
 
-def downdload_stream(url, existing_file=None):
-    """Downloads and returns a temporary file containing the file."""
-    if existing_file is None:
-        tf = tempfile.TemporaryFile(mode="w+b")
+try:
+    import requests
+except ImportError:
+    print("IE: requests")
+    exit(1)
+
+try:
+    import pygressbar
+except ImportError:
+    print("IE: pygressbar")
+    exit(1)
+
+import facts
+from facts.exceptions import *
+from facts.download import stream as downdload_stream
+
+def cmd_create(args):
+    if os.path.exists(args.path):
+        if not args.q:
+            print("Error: Folder already exists")
+        exit(2)
     else:
-        tf = existing_file
-
-    r = requests.get(url, stream=True)
-
-    try:
-        for chunk in r.iter_content(chunk_size=1024):
-            if chunk: # filter out keep-alive new chunks
-                tf.write(chunk)
-    except:
-        tf.close()
-        raise
-    tf.seek(0)
-    return tf
-
-class Version(tuple):
-    def __init__(self, data):
-        if isinstance(data, str):
-            self._parts = tuple([int(p) for p in data.split(".")])
-        elif isinstance(data, (list, tuple)):
-            self._parts = tuple(data)
+        if args.q:
+            ver = facts.resolve_version_name(args.version)
+            facts.Server.create(args.path, ver)
         else:
-            raise TypeError
+            print("Fetching version info... ", end="")
+            sys.stdout.flush()
 
-        if len(self._parts) != 3:
-            raise ValueError
+            ver = facts.resolve_version_name(args.version)
 
-        if not all(isinstance(p, int) for p in self._parts):
-            raise ValueError
+            print("[ok]")
 
-    @property
-    def major(self):
-        return self[0]
+            with pygressbar.PercentageProgressBar(width=30, show_value=True) as pb:
+                print("Downloading... ", end="")
+                sys.stdout.flush()
 
-    @property
-    def minor(self):
-        return self[1]
+                pb.update(0)
+                def callback(current, total):
+                    pb.update(current, update_max_value=total)
 
-    @property
-    def patch(self):
-        return self[2]
+                facts.Server.create(args.path, ver, dl_callback=callback)
 
-    def __str__(self):
-        return ".".join(str(p) for p in self._parts)
+                print("[ok]")
+            print("Server created")
 
-    def __repr__(self):
-        return "Version({})".format(str(self))
+def cmd_update(args):
+    server = facts.Server(args.path)
 
-class Update(object):
-    def __init__(self, old, new):
-        self.old = old
-        self.new = new
+    # NOTE: Duplicating facts.Server.update to allow easier printing
+    # TODO: This should probably be refactored
 
-    @property
-    def link(self):
-        r = requests.get(
-            "https://updater.factorio.com/get-download-link",
-            params={
-                "from": str(self.old),
-                "to": str(self.new),
-                "package": "core-linux_headless64"
-            }
-        )
-        return r.json()[0]
+    print(hasattr(args, "experimental"))
 
-    @property
-    def foldername(self):
-        return "core-linux_headless64-{}-{}-update".format(self.old, self.new)
+    print("Checking for updates... ", end="")
+    sys.stdout.flush()
 
-    def __eq__(self, other):
-        return self.old == other.old and self.new == other.new
+    update_path = server.get_update_path(True)
 
-    def __lt__(self, other):
-        return self.new < other.new
+    print("[ok]")
 
-    def __gt__(self, other):
-        return self.new > other.new
+    if update_path == []:
+        print("Already the newest version")
+    else:
+        with tempfile.TemporaryDirectory() as td:
+            with pygressbar.MultiProgressBar([
+                pygressbar.ValueProgressBar(len(update_path), width=30, show_value=True),
+                pygressbar.PercentageProgressBar(width=30, show_value=True)
+            ]) as pbs:
 
-    def __repr__(self):
-        return "Update({}, {})".format(self.old, self.new)
+                file_downloaded = 0
 
-class Server(object):
-    @classmethod
-    def create(cls, server_dir, version):
-        """Creates a new server dir with given version."""
-        assert isinstance(version, Version)
-        assert not os.path.exists(server_dir)
+                print("Updating to {}".format(update_path[-1].new))
 
-        url = "https://www.factorio.com/get-download/{}/headless/linux64".format(str(version))
-        with tarfile.open(fileobj=downdload_stream(url), mode="r:xz") as tar:
-            # paranoid check
-            names = (n.strip() for n in tar.getnames())
-            assert not any(name.startswith("/") or ".." in name for name in names)
-            assert all(name.startswith("factorio/") for name in names)
+                print("Downloading... ", end="")
+                sys.stdout.flush()
 
-            with tempfile.TemporaryDirectory() as td:
-                tar.extractall(td)
-                os.rename(os.path.join(td, "factorio"), server_dir)
-        return cls(server_dir)
+                def dl_callback(cursor, size):
+                    global file_downloaded
+                    file_downloaded = cursor
+                    pbs.bars[1].max_value = size
 
-    def __init__(self, path):
-        assert os.path.isdir(path)
-        self.path = path
+                pbs.update(0, file_downloaded)
+                for i, update in enumerate(update_path):
+                    with open(os.path.join(td, update.tempfilename), "wb") as tf:
+                        downdload_stream(update.link, tf, dl_callback)
+                    pbs.update(i+1, file_downloaded)
 
-    def get_file(self, path):
-        assert not path.startswith("/")
-        return os.path.join(self.path, path)
+                print("[ok]")
 
-    @property
-    def executable(self):
-        return self.get_file("bin/x64/factorio")
+            print("Applying changes...")
 
-    @property
-    def version(self):
-        with open(self.get_file("data/base/info.json")) as f:
-            return Version(json.load(f)["version"])
+            with pygressbar.ValueProgressBar(len(update_path), width=30, show_value=True) as pb:
+                pb.update(0)
+                for i, update in enumerate(update_path):
+                    update_error = server.apply_update(os.path.join(td, update.tempfilename))
+                    if update_error:
+                        print(update_error)
 
-    def get_update_path(self, experimental=True):
-        r = requests.get("https://updater.factorio.com/get-available-versions")
-        data = r.json()["core-linux_headless64"]
-        avaliable_updates = []
-        for d in data:
-            if set(d.keys()) == {"from", "to"}:
-                avaliable_updates.append(Update(Version(d["from"]), Version(d["to"])))
+                    pb.update(i+1)
 
-        stable = Version([d["stable"] for d in data if "stable" in d][0])
+            print("Update successful")
 
-        updates = []
-        version = self.version
-        for update in sorted(avaliable_updates):
-            if (not experimental) and version == stable:
-                break
+def cmd_version(args):
+    print(facts.Server(args.path).version)
 
-            if update.old == version:
-                updates.append(update)
-                version = update.new
+def main():
+    global_flags = argparse.ArgumentParser(add_help=False)
+    global_flags.add_argument("-q", action='store_true', help="Surpressess all output")
 
-        return updates
+    parser = argparse.ArgumentParser(description="Factorio server helper", parents=[global_flags])
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.required = True
 
-    def resolve_update_path(self, upath):
-        upath = upath.replace("__PATH__bin__", "bin")
-        upath = upath.replace("__PATH__read-data__", "data")
-        return self.get_file(upath)
+    # Command: create
+    create_parser = subparsers.add_parser("create", parents=[global_flags])
+    create_parser.add_argument("path", help="Path for the server directory")
+    create_parser.add_argument(
+        "version",
+        help="Either 'stable', 'experimental' or in numeric format (default: experimental)",
+        nargs="?",
+        default="experimental"
+    )
+    create_parser.set_defaults(func=cmd_create)
 
-    def apply_update(self, update):
-        with tempfile.NamedTemporaryFile() as tf:
-            downdload_stream(update.link, tf)
-            subprocess.run([self.executable, "--apply-update", tf.name])
+    # Command: update
+    update_parser = subparsers.add_parser("update", parents=[global_flags])
+    update_parser.add_argument("path", help="Path for the server directory")
+    update_parser.add_argument(
+        "version",
+        help="Either 'stable', 'experimental' or in numeric format (default: experimental)",
+        nargs="?",
+        default="experimental"
+    )
+    update_parser.set_defaults(func=cmd_update)
 
-    def update(self, experimental=True):
-        """Installs package with given version on top of existing server."""
+    # Command: version
+    version_parser = subparsers.add_parser("version", parents=[global_flags])
+    version_parser.add_argument("path", help="Path for the server directory")
+    version_parser.set_defaults(func=cmd_version)
 
-        for update in self.get_update_path(experimental):
-            self.apply_update(update)
+    args = parser.parse_args()
+    try:
+        args.func(args)
+    except requests.exceptions.ConnectTimeout:
+        if not args.q:
+            print("Connection timed out")
+        exit(3)
 
-if not os.path.exists("tuska"):
-    Server.create("tuska", Version("0.15.9"))
-Server("tuska").update()
-
-
-# facts create tuska
-# facts create tuska stable
-# facts create tuska experimental
-# facts create tuska 0
-# facts create tuska 0.15
-# facts create tuska 0.15.11
-
-# facts update tuska
-# facts update tuska stable
-# facts update tuska experimental
+if __name__ == '__main__':
+    main()
