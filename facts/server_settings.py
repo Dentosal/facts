@@ -1,6 +1,8 @@
 import os.path
 import json
 
+from .version import latest
+
 class ServerSettings(object):
     """Server settings file, lazily loaded."""
 
@@ -16,6 +18,8 @@ class ServerSettings(object):
 
     def _create(self):
         self.__data = self.DEFAULT_SETTINGS.copy()
+        if server.version > latest(experimental=False):
+            self.__data["experimental"] = True
         self._save()
 
     def _load(self):
