@@ -6,6 +6,7 @@ import tarfile
 import subprocess
 import requests
 
+from .server_settings import ServerSettings
 from .download import stream as downdload_stream
 from .version import Version, Update
 from .exceptions import *
@@ -18,8 +19,8 @@ class Server(object):
         assert not os.path.exists(server_dir)
 
         url = "https://www.factorio.com/get-download/{}/headless/linux64".format(str(version))
-        with tarfile.open(fileobj=downdload_stream(url, callback=dl_callback), mode="r:xz") as tar:
-            # paranoid check
+        with tarfile.open(fileobj=downdload_stream(url, callback=dl_callback)) as tar:
+            # "paranoid" check
             names = (n.strip() for n in tar.getnames())
             assert not any(name.startswith("/") or ".." in name for name in names)
             assert all(name.startswith("factorio/") for name in names)
@@ -32,6 +33,7 @@ class Server(object):
     def __init__(self, path):
         assert os.path.isdir(path)
         self.path = path
+        self.settings = ServerSettings(self)
 
     def get_file(self, path):
         assert not path.startswith("/")
@@ -46,7 +48,7 @@ class Server(object):
         with open(self.get_file("data/base/info.json")) as f:
             return Version(json.load(f)["version"])
 
-    def get_update_path(self, experimental=True):
+    def get_update_path(self, experimental):
         r = requests.get("https://updater.factorio.com/get-available-versions", timeout=10.0)
         data = r.json()["core-linux_headless64"]
         avaliable_updates = []
@@ -82,7 +84,7 @@ class Server(object):
                     return ErrorStatusMessage("Could not update:\n"+"\n".join(lines[i:-2]))
             return ErrorStatusMessage("Could not update. Factorio error log:\n"+"\n".join(lines))
 
-    def update(self, experimental=True):
+    def update(self, experimental):
         update_path = self.get_update_path(experimental)
         if update_path != []:
             callback(EndStatusMessage("Updating to {}".format(update_path[-1].new)))
@@ -111,3 +113,11 @@ class Server(object):
 
                 # callback(ProgressStatusMessage(2, len(update_path), len(update_path)))
                 callback(EndStatusMessage("Update successful"))
+
+    @property
+    def saves(self):
+        """A list of all saved games."""
+        return
+
+    def start(self):
+        os.execl(self.executable, "")

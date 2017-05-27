@@ -1,16 +1,19 @@
 import requests
 
+def latest(experimental=False):
+    r = requests.get("https://updater.factorio.com/get-available-versions", timeout=10.0)
+    data = r.json()["core-linux_headless64"]
+
+    if experimental:
+        return max(Version(d["to"]) for d in data if "to" in d)
+    else:
+        return Version([d["stable"] for d in data if "stable" in d][0])
+
 def resolve(version):
     assert isinstance(version, str)
 
     if version in ("stable", "experimental"):
-        r = requests.get("https://updater.factorio.com/get-available-versions", timeout=10.0)
-        data = r.json()["core-linux_headless64"]
-
-        if version == "stable":
-            return Version([d["stable"] for d in data if "stable" in d][0])
-        else:
-            return max(Version(d["to"]) for d in data if "to" in d)
+        return latest()
     else:
         return Version(version)
 
