@@ -89,7 +89,6 @@ class Server(object):
         if update_path != []:
             with tempfile.TemporaryDirectory() as td:
                 for i, update in enumerate(update_path):
-                    print(i, len(update_path))
                     with open(os.path.join(td, update.tempfilename), "wb") as tf:
                         downdload_stream(update.link, tf)
 
