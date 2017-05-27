@@ -87,32 +87,17 @@ class Server(object):
     def update(self, experimental):
         update_path = self.get_update_path(experimental)
         if update_path != []:
-            callback(EndStatusMessage("Updating to {}".format(update_path[-1].new)))
-
             with tempfile.TemporaryDirectory() as td:
-
-                callback(StartStatusMessage("Downloading "))
-
                 for i, update in enumerate(update_path):
-                    callback(ProgressStatusMessage(0, i, len(update_path)))
+                    print(i, len(update_path))
                     with open(os.path.join(td, update.tempfilename), "wb") as tf:
-                        downdload_stream(update.link, tf, callback)
-
-                callback(ProgressStatusMessage(0, len(update_path), len(update_path)))
-
-                callback(EndStatusMessage("[ok]"))
-
-                callback(EndStatusMessage("Applying changes "))
+                        downdload_stream(update.link, tf)
 
                 for i, update in enumerate(update_path):
-                    callback(ProgressStatusMessage(2, i, len(update_path)))
-
                     update_error = self.apply_update(os.path.join(td, update.tempfilename))
                     if update_error:
-                        callback(update_error)
-
-                # callback(ProgressStatusMessage(2, len(update_path), len(update_path)))
-                callback(EndStatusMessage("Update successful"))
+                        return False
+        return True
 
     @property
     def saves(self):
