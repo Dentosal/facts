@@ -23,7 +23,11 @@ Create and run a world with default settings with
 * `--server-settings map-settings.json` to specify server settings
 * `--server-adminlist server-adminlist.json` to specify server admin list
 * `--add-admin AdminUserName` to add server admins
-* `--autoupdate [true|false]` automatically apply updates when no players are online (default: true)
+* `--autoupdate SETTING`
+  * `enabled` automatically apply updates when no players are online (default)
+  * `forced` immediately restart when updates are available, kicking out players
+  * `startup` auto-update on server startup
+  * `disabled` never auto-update
 
 #### Import existing world to facts
 
@@ -64,6 +68,6 @@ Supports all arguments from `facts create`, except map(-gen)-settings which cann
 
 `facts prune`
 
-#### Update facts itself
+#### Update facts itself (not implemented yet)
 
 `facts self update`
