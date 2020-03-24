@@ -10,9 +10,11 @@ mod server_process;
 mod version;
 
 use std::collections::HashSet;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::config::*;
+use crate::error::OutputFileAlreadyExists;
 use crate::server::Server;
 
 #[cfg(not(unix))]
@@ -46,6 +48,13 @@ fn main(args: Args) {
 
     let result = match args {
         Args::Create { name, config } => cmd_create(&name, config),
+        Args::Import {
+            name,
+            path,
+            config,
+            meta,
+        } => cmd_import(&name, &path, config, meta),
+        Args::Export { name, path, force } => cmd_export(&name, &path, force),
         Args::Edit { name, config, meta } => cmd_edit(&name, config, meta),
         Args::Update { name } => cmd_update(&name),
         Args::Delete { name, force } => cmd_delete(&name, force),
@@ -65,13 +74,26 @@ fn main(args: Args) {
 }
 
 fn cmd_create(name: &str, config: CreateConfig) -> Result<(), Box<dyn std::error::Error>> {
-    let server = Server::try_new(name.to_owned(), config)?;
-    server.generate();
-    log::info!(
-        "Created server {} with Factorio version {}",
-        server.name,
-        server.info.current_version
-    );
+    Server::create(name.to_owned(), config)?;
+    Ok(())
+}
+
+fn cmd_import(
+    name: &str, path: &Path, config: ImportConfig, meta: MetaConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::create_empty(name.to_owned(), config, meta)?;
+    std::fs::copy(path, server.dir.join("world.zip"))?;
+    Ok(())
+}
+
+fn cmd_export(name: &str, path: &Path, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::get(name.to_owned())?;
+
+    if path.exists() && !force {
+        return Err(Box::new(OutputFileAlreadyExists(path.to_owned())));
+    }
+
+    std::fs::copy(server.dir.join("world.zip"), path)?;
     Ok(())
 }
 

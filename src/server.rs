@@ -33,7 +33,7 @@ pub struct Server {
 }
 impl Server {
     /// Creates a new server from name and config
-    pub fn try_new(name: String, config: CreateConfig) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn create(name: String, config: CreateConfig) -> Result<Self, Box<dyn std::error::Error>> {
         let dir = crate::dirs::new_world(&name)?;
         let current_version = download::require(config.meta.factorio.clone())?;
 
@@ -49,6 +49,31 @@ impl Server {
 
         s.create_config_ini();
         s.create_copy_files(&config);
+        s.save();
+        s.generate();
+
+        Ok(s)
+    }
+
+    /// Creates a new, empty server from name and some configuration
+    pub fn create_empty(
+        name: String, config: ImportConfig, meta: MetaConfig,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let dir = crate::dirs::new_world(&name)?;
+        let current_version = download::require(meta.factorio.clone())?;
+
+        let s = Self {
+            dir,
+            name,
+            info: ServerInfo {
+                _version: SERVER_INFO_VERSION,
+                config: meta,
+                current_version,
+            },
+        };
+
+        s.create_config_ini();
+        s.import_copy_files(&config);
         s.save();
 
         Ok(s)
@@ -181,7 +206,7 @@ impl Server {
     }
 
     /// Generate world based on the settings
-    pub fn generate(&self) {
+    fn generate(&self) {
         log::info!("Generating world");
 
         let output = self

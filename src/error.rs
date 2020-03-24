@@ -1,7 +1,22 @@
 use std::error::Error;
 use std::fmt;
+use std::path::PathBuf;
 
 use crate::version::{Version, VersionReq};
+
+#[derive(Debug)]
+#[must_use]
+pub struct OutputFileAlreadyExists(pub PathBuf);
+impl fmt::Display for OutputFileAlreadyExists {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "File {:?} already exists, use --force to overwrite",
+            self.0
+        )
+    }
+}
+impl Error for OutputFileAlreadyExists {}
 
 #[derive(Debug)]
 #[must_use]

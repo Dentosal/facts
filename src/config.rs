@@ -121,6 +121,32 @@ pub enum Args {
         #[structopt(flatten)]
         config: CreateConfig,
     },
+    /// Import existing world to facts
+    Import {
+        /// Name for the server
+        name: String,
+
+        /// World file
+        path: PathBuf,
+
+        #[structopt(flatten)]
+        config: ImportConfig,
+
+        #[structopt(flatten)]
+        meta: MetaConfig,
+    },
+    /// Export world to a zip file
+    Export {
+        /// Name for the server
+        name: String,
+
+        /// World file
+        path: PathBuf,
+
+        /// Allow overwriting target file
+        #[structopt(long)]
+        force: bool,
+    },
     /// Edits server config
     Edit {
         /// Name of the server
