@@ -16,6 +16,7 @@ pub enum RunningServerState {
     Ready,
     PreparedToHostGame,
     CreatingGame,
+    InitializationFailed,
     InGame,
     InGameSavingMap,
     DisconnectingScheduled,
@@ -130,7 +131,7 @@ pub fn run(
 
     loop {
         select! {
-            recv(rx) -> msg => match msg.unwrap() {
+            recv(rx) -> msg => match msg.expect("Recv from parent") {
                 message::ToServer::Shutdown => {
                     // Send SIGINT, so that Factorio autosaves and quits
                     nix::sys::signal::kill(
@@ -143,7 +144,7 @@ pub fn run(
                     tx.send(message::FromServer::State(state.clone())).unwrap();
                 },
             },
-            recv(rx_stdout) -> msg => match msg.unwrap() {
+            recv(rx_stdout) -> msg => match msg.expect("Recv from stdout") {
                 Some(line) => state.new_line(&line)?,
                 None => break,
             },

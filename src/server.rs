@@ -1,6 +1,6 @@
 //! Builds file configuration for a server
 
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{bounded, unbounded};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -264,13 +264,24 @@ impl Server {
             .spawn()
             .unwrap();
 
-        let (tx_to, rx_to) = unbounded::<message::ToServer>();
+        let (tx_to, rx_to) = bounded::<message::ToServer>(0);
         let (tx_from, rx_from) = unbounded::<message::FromServer>();
 
         let handle: JoinHandle<Result<(), _>> =
             thread::spawn(move || server_process::run(child, tx_from, rx_to));
 
-        let msg = rx_from.recv().expect("Server thread crashed");
+        macro_rules! try_channel {
+            ($result:expr) => {{
+                if let Ok(value) = $result {
+                    value
+                } else {
+                    handle.join().expect("Server thread crashed")?;
+                    unreachable!();
+                }
+            }};
+        }
+
+        let msg = try_channel!(rx_from.recv());
         assert!(matches!(msg, message::FromServer::StartupComplete));
 
         log::info!("Server is running");
