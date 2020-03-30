@@ -3,6 +3,7 @@
 use crossbeam_channel::{bounded, unbounded};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -11,6 +12,7 @@ use std::thread::{self, JoinHandle};
 use crate::config::*;
 use crate::download;
 use crate::error::DowngradingNotAllowed;
+use crate::modportal::{ModDownloader, ModInfo};
 use crate::server_process::{self, message};
 use crate::version::{ResolvedVersionReq, Version};
 
@@ -174,6 +176,83 @@ impl Server {
         .expect("Could not write file");
     }
 
+    /// Link a mod into `mods/` folder of this world
+    pub fn mods(&self) -> Vec<ModInfo> {
+        let mut pb = self.dir.clone();
+        pb.push("factorio");
+        pb.push("mods");
+        let paths = fs::read_dir(pb).unwrap();
+        paths
+            .filter_map(|p| {
+                let path = p.ok()?.path();
+                let fname = path.file_name()?.to_str()?;
+                if !fname.ends_with(".zip") {
+                    return None;
+                }
+
+                Some(ModInfo::try_from_file_name(fname).ok()?)
+            })
+            .collect()
+    }
+
+    /// Link a mod into `mods/` folder of this world, removes other versions
+    pub fn link_mod(&self, mod_info: &ModInfo) {
+        for installed_mod in self.mods() {
+            if installed_mod.name == mod_info.name && installed_mod.version != mod_info.version {
+                self.unlink_mod(&installed_mod);
+            }
+        }
+
+        let mut dest = self.dir.clone();
+        dest.push("factorio");
+        dest.push("mods");
+        dest.push(mod_info.file_name());
+        if !dest.exists() {
+            symlink(mod_info.path(), dest).expect("Could not create mod symlink")
+        }
+    }
+
+    /// Remove mod link from this world
+    pub fn unlink_mod(&self, mod_info: &ModInfo) {
+        let mut dest = self.dir.clone();
+        dest.push("factorio");
+        dest.push("mods");
+        dest.push(mod_info.file_name());
+        if dest.exists() {
+            fs::remove_file(dest).expect("Could not remove mod symlink");
+        }
+    }
+
+    pub fn add_mods(&self, mods: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let downloader = ModDownloader::new()?;
+        log::info!("Downloading mods");
+        for modname in mods {
+            let mod_info = downloader.require(&modname, self.info.current_version)?;
+            self.link_mod(&mod_info);
+        }
+        log::info!("Download complete");
+        Ok(())
+    }
+
+    pub fn remove_mods(&self, mods: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let installed_mods = self.mods();
+        for remove_mod in mods {
+            for installed_mod in &installed_mods {
+                if installed_mod.name == remove_mod {
+                    self.unlink_mod(installed_mod);
+                    break;
+                }
+                log::warn!("No such mod {:?}", remove_mod);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn update_mods(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.add_mods(self.mods().iter().map(|m| m.name.to_owned()).collect())
+    }
+
     fn command_base(&self) -> Command {
         let mut cmd = Command::new(
             self.info
@@ -229,6 +308,8 @@ impl Server {
         args.push("config.ini");
         args.push("--start-server");
         args.push("world.zip");
+        args.push("--mod-directory");
+        args.push("factorio/mods/");
         args.push("--server-adminlist");
         args.push("server-adminlist.json");
         if self.dir.join("server-settings.json").exists() {
@@ -368,10 +449,12 @@ impl Server {
             if let Some(resolved) = self.update_available() {
                 self.update(resolved)?;
             }
+            self.update_mods()?;
         }
 
         while let Some(resolved) = self.run_once()? {
             self.update(resolved)?;
+            self.update_mods()?;
         }
 
         Ok(())

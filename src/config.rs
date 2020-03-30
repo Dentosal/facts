@@ -1,9 +1,65 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 use structopt::StructOpt;
 use strum_macros::EnumString;
 
+use crate::dirs::credentials_file;
 use crate::version::VersionReq;
+
+#[derive(Clone, PartialEq, Eq, StructOpt, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct Password {
+    pub plaintext: String,
+}
+impl FromStr for Password {
+    type Err = !;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self {
+            plaintext: s.to_owned(),
+        })
+    }
+}
+impl fmt::Debug for Password {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Password(...)")
+    }
+}
+impl fmt::Display for Password {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Password(...)")
+    }
+}
+
+/// Factorio mod portal credentials
+#[derive(Debug, Clone, PartialEq, Eq, StructOpt, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+#[structopt(rename_all = "kebab-case")]
+pub struct LoginCredentials {
+    pub username: Option<String>,
+    pub password: Option<Password>,
+}
+
+/// Factorio API credentials
+#[derive(Debug, Clone, PartialEq, Eq, StructOpt, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TokenCredentials {
+    pub username: String,
+    pub token: Password,
+}
+impl TokenCredentials {
+    pub fn load() -> Option<Self> {
+        serde_json::from_slice(&fs::read(credentials_file()).ok()?).unwrap()
+    }
+
+    pub fn store(&self) {
+        fs::write(credentials_file(), serde_json::to_string(self).unwrap())
+            .expect("Could not write file");
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumString, StructOpt, Deserialize, Serialize)]
 #[structopt(rename_all = "kebab-case")]
@@ -158,12 +214,41 @@ pub enum Args {
         #[structopt(flatten)]
         meta: MetaConfigUpdate,
     },
+    /// Log in to the mod portal, optionally save credentials
+    Login {
+        #[structopt(flatten)]
+        credentials: LoginCredentials,
+    },
+    /// List server mods
+    ListMods {
+        /// Name of the server
+        name: String,
+    },
+    /// Adds server mods
+    AddMod {
+        /// Name of the server
+        name: String,
+
+        mods: Vec<String>,
+    },
+    /// Adds server mods
+    RemoveMod {
+        /// Name of the server
+        name: String,
+
+        mods: Vec<String>,
+    },
+    /// Update server mods
+    UpdateMods {
+        /// Name of the server
+        name: String,
+    },
     /// Display server config
     Show {
         /// Name of the server
         name: String,
     },
-    /// Update server to latest available one
+    /// Update server (and mods) to latest available one
     Update {
         /// Name of the server
         name: String,

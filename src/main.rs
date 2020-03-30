@@ -1,10 +1,14 @@
+// Lints
 #![deny(unused_must_use)]
 #![forbid(mutable_borrow_reservation_conflict)]
+// Nightly features
+#![feature(never_type)]
 
 mod config;
 mod dirs;
 mod download;
 mod error;
+mod modportal;
 mod server;
 mod server_process;
 mod version;
@@ -18,7 +22,7 @@ use crate::error::OutputFileAlreadyExists;
 use crate::server::Server;
 
 #[cfg(not(unix))]
-compile_error!("Non-unix systems are not supported");
+compile_error!("Non-unixy systems are not supported");
 
 /// Global boolean marking whether SIGINT has been detected
 static SIGINT: AtomicBool = AtomicBool::new(false);
@@ -58,6 +62,11 @@ fn main(args: Args) {
         Args::Edit { name, config, meta } => cmd_edit(&name, config, meta),
         Args::Update { name } => cmd_update(&name),
         Args::Delete { name, force } => cmd_delete(&name, force),
+        Args::Login { credentials } => cmd_login(credentials),
+        Args::ListMods { name } => cmd_list_mods(&name),
+        Args::AddMod { name, mods } => cmd_add_mod(&name, mods),
+        Args::RemoveMod { name, mods } => cmd_remove_mod(&name, mods),
+        Args::UpdateMods { name } => cmd_update_mods(&name),
         Args::Show { name } => cmd_show(&name),
         Args::List { extended } => cmd_list(extended),
         Args::Prune => cmd_prune(),
@@ -110,6 +119,7 @@ fn cmd_update(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(resolved) = server.update_available() {
         server.update(resolved)?;
     }
+    cmd_update_mods(name)?;
     Ok(())
 }
 
@@ -133,6 +143,35 @@ fn cmd_delete(name: &str, force: bool) -> Result<(), Box<dyn std::error::Error>>
     std::fs::remove_dir_all(dir)?;
 
     Ok(())
+}
+
+fn cmd_login(credentials: LoginCredentials) -> Result<(), Box<dyn std::error::Error>> {
+    let downloader = modportal::ModDownloader::new()?;
+    downloader.login(credentials)?;
+    Ok(())
+}
+
+fn cmd_list_mods(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::get(name.to_owned())?;
+    for mod_info in server.mods() {
+        println!("{} {}", mod_info.name, mod_info.version);
+    }
+    Ok(())
+}
+
+fn cmd_add_mod(name: &str, mods: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::get(name.to_owned())?;
+    server.add_mods(mods)
+}
+
+fn cmd_remove_mod(name: &str, mods: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::get(name.to_owned())?;
+    server.remove_mods(mods)
+}
+
+fn cmd_update_mods(name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let server = Server::get(name.to_owned())?;
+    server.update_mods()
 }
 
 fn cmd_show(name: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -170,11 +209,13 @@ fn cmd_prune() -> Result<(), Box<dyn std::error::Error>> {
         used_versions.insert(server.info.current_version);
     }
 
-    for version in dirs::list_versions() {
+    for version in dirs::list_versions()? {
         if !used_versions.contains(&version) {
             dirs::delete_version(version);
         }
     }
+
+    // TODO: prune mods
 
     Ok(())
 }

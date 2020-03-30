@@ -15,6 +15,13 @@ pub fn app_root() -> PathBuf {
 }
 
 /// Creates directory `worlds/$name` and required subdirectories
+pub fn credentials_file() -> PathBuf {
+    let mut pb = app_root();
+    pb.push("credentials.json");
+    pb
+}
+
+/// Creates directory `worlds/$name` and required subdirectories
 pub fn new_world(name: &str) -> Result<PathBuf, WorldAlreadyExists> {
     let mut pb = app_root();
     pb.push("worlds");
@@ -62,20 +69,20 @@ pub fn list_worlds() -> Vec<String> {
 }
 
 /// Returns all downloaded versions
-pub fn list_versions() -> Vec<Version> {
+pub fn list_versions() -> Result<Vec<Version>, Box<dyn std::error::Error>> {
     let mut pb = app_root();
     pb.push("versions");
 
     if let Ok(paths) = fs::read_dir(pb) {
         paths
             .map(|p| {
-                Version::from_str(&String::from(
+                Version::try_from_str(&String::from(
                     p.unwrap().path().file_name().unwrap().to_str().unwrap(),
                 ))
             })
             .collect()
     } else {
-        Vec::new()
+        Ok(Vec::new())
     }
 }
 
@@ -96,4 +103,10 @@ pub fn delete_version(version: Version) {
     pb.push(version.to_string());
 
     fs::remove_dir_all(&pb).expect("Could not delete dir");
+}
+
+pub fn create_mods_dir() {
+    let mut pb = app_root();
+    pb.push("mods");
+    fs::create_dir_all(&pb).expect("Could not create dir");
 }

@@ -22,7 +22,7 @@ impl LatestReleases {
         log::trace!("Requesting latest release numbers");
 
         let s = Self {
-            experimental: Version::from_str(
+            experimental: Version::try_from_str(
                 &resp
                     .get("experimental")
                     .expect(INVALID_DATA)
@@ -30,8 +30,9 @@ impl LatestReleases {
                     .expect(INVALID_DATA)
                     .as_str()
                     .expect(INVALID_DATA),
-            ),
-            stable: Version::from_str(
+            )
+            .expect(INVALID_DATA),
+            stable: Version::try_from_str(
                 &resp
                     .get("stable")
                     .expect(INVALID_DATA)
@@ -39,7 +40,8 @@ impl LatestReleases {
                     .expect(INVALID_DATA)
                     .as_str()
                     .expect(INVALID_DATA),
-            ),
+            )
+            .expect(INVALID_DATA),
         };
 
         log::trace!("Latest releases {:?}", s);
@@ -67,7 +69,7 @@ impl Release {
         Ok(document
             .select(&selector)
             .map(|x| Self {
-                version: Version::from_str(
+                version: Version::try_from_str(
                     &x.text()
                         .next()
                         .expect(INVALID_DATA)
@@ -75,7 +77,8 @@ impl Release {
                         .next()
                         .expect(INVALID_DATA)
                         .to_owned(),
-                ),
+                )
+                .expect(INVALID_DATA),
             })
             .collect())
     }

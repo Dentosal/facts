@@ -7,25 +7,27 @@ use std::str::FromStr;
 
 use crate::dirs;
 use crate::download::LatestReleases;
+use crate::error::InvalidVersionNumber;
 
-/// Semver-like three-segment version number
+/// Semver-like three-segment version number,
+/// representing an exact released version
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct Version(u32, u32, u32);
 impl Version {
-    pub fn from_str(s: &str) -> Self {
+    pub fn try_from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
         lazy_static! {
             static ref RE: Regex =
                 Regex::new(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$").unwrap();
         }
 
         if let Some(cap) = RE.captures(&s) {
-            Self(
+            Ok(Self(
                 cap[1].parse::<u32>().unwrap(),
                 cap[2].parse::<u32>().unwrap(),
                 cap[3].parse::<u32>().unwrap(),
-            )
+            ))
         } else {
-            panic!("Invalid version number {}", s);
+            Err(Box::new(InvalidVersionNumber::Version(s.to_owned())))
         }
     }
 
@@ -36,6 +38,46 @@ impl Version {
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.0, self.1, self.2)
+    }
+}
+
+/// Semver-like two-segment version number,
+/// used to represent a group of compatible versions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct Version2(u32, u32);
+impl Version2 {
+    pub fn try_from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$").unwrap();
+        }
+
+        if let Some(cap) = RE.captures(&s) {
+            Ok(Self(
+                cap[1].parse::<u32>().unwrap(),
+                cap[2].parse::<u32>().unwrap(),
+            ))
+        } else {
+            Err(Box::new(InvalidVersionNumber::Version2(s.to_owned())))
+        }
+    }
+
+    pub fn includes(self, version: Version) -> bool {
+        self.extend_start() <= version && version < self.extend_after()
+    }
+
+    /// Extend with a zero in patch number, i.e. first version under this
+    fn extend_start(self) -> Version {
+        Version(self.0, self.1, 0)
+    }
+
+    /// Extend to next version after this, e.g. 0.1.2 -> 0.2.0
+    fn extend_after(self) -> Version {
+        Version(self.0, self.1 + 1, 0)
+    }
+}
+impl fmt::Display for Version2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.0, self.1)
     }
 }
 
@@ -79,7 +121,7 @@ impl VersionReq {
     pub fn resolve(&self) -> Result<ResolvedVersionReq, Box<dyn std::error::Error>> {
         Ok(match self {
             Self::Specific(s) => ResolvedVersionReq {
-                version: Version::from_str(s),
+                version: Version::try_from_str(s)?,
                 stability_hint: None,
             },
             Self::Stable => ResolvedVersionReq {
@@ -100,5 +142,61 @@ impl fmt::Display for VersionReq {
             Self::Stable => "latest stable",
             Self::Experimental => "latest experimental",
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn version2range_includes() {
+        let v01 = Version2::from_str("0.1");
+        let v02 = Version2::from_str("0.2");
+        let v03 = Version2::from_str("0.3");
+        let v10 = Version2::from_str("1.0");
+        let v20 = Version2::from_str("2.0");
+
+        let vr0 = v01.to(v02);
+        assert!(!vr0.includes(Version::from_str("0.0.9")));
+        assert!(vr0.includes(Version::from_str("0.1.0")));
+        assert!(vr0.includes(Version::from_str("0.1.3")));
+        assert!(vr0.includes(Version::from_str("0.2.0")));
+        assert!(vr0.includes(Version::from_str("0.2.3")));
+        assert!(!vr0.includes(Version::from_str("0.3.0")));
+
+        let vr1 = v10.to(v20);
+        assert!(!vr1.includes(Version::from_str("0.0.9")));
+        assert!(!vr1.includes(Version::from_str("0.1.0")));
+        assert!(!vr1.includes(Version::from_str("0.1.3")));
+        assert!(!vr1.includes(Version::from_str("0.2.0")));
+        assert!(!vr1.includes(Version::from_str("0.2.3")));
+        assert!(!vr1.includes(Version::from_str("0.3.0")));
+        assert!(!vr1.includes(Version::from_str("0.9.0")));
+        assert!(vr1.includes(Version::from_str("1.0.2")));
+        assert!(vr1.includes(Version::from_str("1.3.4")));
+        assert!(vr1.includes(Version::from_str("2.0.6")));
+        assert!(!vr1.includes(Version::from_str("2.3.8")));
+        assert!(!vr1.includes(Version::from_str("3.0.0")));
+
+        let vr2 = v10.to(v10);
+        assert!(!vr2.includes(Version::from_str("0.9.0")));
+        assert!(vr2.includes(Version::from_str("1.0.2")));
+        assert!(!vr2.includes(Version::from_str("1.3.4")));
+        assert!(!vr2.includes(Version::from_str("2.0.6")));
+        assert!(!vr2.includes(Version::from_str("2.3.8")));
+        assert!(!vr2.includes(Version::from_str("3.0.0")));
+
+        let vr3 = v02.to(v03);
+        assert!(!vr3.includes(Version::from_str("0.1.0")));
+        assert!(vr3.includes(Version::from_str("0.2.0")));
+        assert!(vr3.includes(Version::from_str("0.2.5")));
+        assert!(vr3.includes(Version::from_str("0.3.0")));
+        assert!(vr3.includes(Version::from_str("0.3.5")));
+        assert!(!vr3.includes(Version::from_str("1.0.2")));
+        assert!(!vr3.includes(Version::from_str("1.3.4")));
+        assert!(!vr3.includes(Version::from_str("2.0.6")));
+        assert!(!vr3.includes(Version::from_str("2.3.8")));
+        assert!(!vr3.includes(Version::from_str("3.0.0")));
     }
 }

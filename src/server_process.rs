@@ -23,6 +23,7 @@ pub enum RunningServerState {
     Disconnecting,
     Disconnected,
     Closed,
+    Failed,
 }
 impl Default for RunningServerState {
     fn default() -> Self {
@@ -107,7 +108,7 @@ fn stdout_thread(stdout: ChildStdout, tx: Sender<Option<String>>) {
     let reader = BufReader::new(stdout);
     for line in reader.lines().filter_map(|line| line.ok()) {
         let done = RE_GOODBYE.is_match(&line);
-        log::trace!("FACTORIO {}", line);
+        log::trace!("Factorio: {}", line);
 
         let _ = tx.send(Some(line));
 

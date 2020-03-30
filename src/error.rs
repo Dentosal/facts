@@ -50,6 +50,30 @@ impl Error for NoDownloadAvailable {}
 
 #[derive(Debug)]
 #[must_use]
+pub struct NoSuchMod(pub String);
+impl fmt::Display for NoSuchMod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "No mod named {:?}", self.0)
+    }
+}
+impl Error for NoSuchMod {}
+
+#[derive(Debug)]
+#[must_use]
+pub struct NoMatchingModVersions(pub String, pub Version);
+impl fmt::Display for NoMatchingModVersions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "No supported versions of mod {:?} for Factorio version {:?}",
+            self.0, self.1
+        )
+    }
+}
+impl Error for NoMatchingModVersions {}
+
+#[derive(Debug)]
+#[must_use]
 pub struct DowngradingNotAllowed {
     pub current: Version,
     pub requested: VersionReq,
@@ -78,3 +102,51 @@ impl fmt::Display for ServerError {
     }
 }
 impl Error for ServerError {}
+
+#[derive(Debug, Clone)]
+pub enum InvalidVersionNumber {
+    Version(String),
+    Version2(String),
+}
+impl fmt::Display for InvalidVersionNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvalidVersionNumber::Version(s) => write!(
+                f,
+                "Invalid version number: {:?} (required major.minor.patch)",
+                s
+            ),
+            InvalidVersionNumber::Version2(s) => {
+                write!(f, "Invalid version number: {:?} (required major.minor)", s)
+            },
+        }
+    }
+}
+impl Error for InvalidVersionNumber {}
+
+#[derive(Debug, Clone)]
+pub struct InternalDataModified(pub String);
+impl fmt::Display for InternalDataModified {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Internal data was modified incorrectly: {}", self.0)
+    }
+}
+impl Error for InternalDataModified {}
+
+#[derive(Debug, Clone)]
+pub struct NotLoggedIn;
+impl fmt::Display for NotLoggedIn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Log in first with `facts login USERNAME PASSWORD`")
+    }
+}
+impl Error for NotLoggedIn {}
+
+#[derive(Debug, Clone)]
+pub struct LoginFailed(pub String);
+impl fmt::Display for LoginFailed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Login failed: {}", self.0)
+    }
+}
+impl Error for LoginFailed {}

@@ -35,7 +35,6 @@ Create and run a world with default settings with
 
 Supports all arguments from `facts create`, except map(-gen)-settings which cannot be changed after creation.
 
-
 #### Edit server settings
 
 `facts edit ExampleWorld`
@@ -54,15 +53,14 @@ Supports all arguments from `facts create`, except map(-gen)-settings which cann
 
 `facts export ExampleWorld world.zip`
 
-#### Delete a server (requires confirmation)
+#### Mods
 
-`facts delete ExampleWorld`
+`facts list-mods ExampleWorld`
+`facts add-mod ExampleWorld Krastorio2`
+`facts remove-mod ExampleWorld Krastorio2`
+`facts update-mods ExampleWorld`
 
-* `--force` to skip confirmation prompt
-
-#### List all servers
-
-`facts list`
+Use mod name from address bar or mod zip file name.
 
 #### Remove unused server versions
 
