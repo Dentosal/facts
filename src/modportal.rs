@@ -193,3 +193,29 @@ fn latest_version(
         })
         .ok_or(error)
 }
+
+#[derive(Deserialize)]
+pub struct ModListJson {
+    mods: Vec<ModListJsonMod>,
+}
+
+#[derive(Deserialize)]
+pub struct ModListJsonMod {
+    name: String,
+    enabled: bool,
+}
+
+pub fn load_mod_list_json(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mod_list: ModListJson = serde_json::from_slice(&fs::read(path)?)?;
+    Ok(mod_list
+        .mods
+        .into_iter()
+        .filter_map(|m| {
+            if m.name != "base" && m.enabled {
+                Some(m.name)
+            } else {
+                None
+            }
+        })
+        .collect())
+}

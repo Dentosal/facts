@@ -12,7 +12,7 @@ use std::thread::{self, JoinHandle};
 use crate::config::*;
 use crate::download;
 use crate::error::DowngradingNotAllowed;
-use crate::modportal::{ModDownloader, ModInfo};
+use crate::modportal::{load_mod_list_json, ModDownloader, ModInfo};
 use crate::server_process::{self, message};
 use crate::version::{ResolvedVersionReq, Version};
 
@@ -50,7 +50,7 @@ impl Server {
         };
 
         s.create_config_ini();
-        s.create_copy_files(&config);
+        s.create_handle_files(&config)?;
         s.save();
         s.generate();
 
@@ -75,7 +75,7 @@ impl Server {
         };
 
         s.create_config_ini();
-        s.import_copy_files(&config);
+        s.import_handle_files(&config)?;
         s.save();
 
         Ok(s)
@@ -101,7 +101,7 @@ impl Server {
     pub fn update_config(
         &mut self, config: ImportConfig, meta: MetaConfigUpdate,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.import_copy_files(&config);
+        self.import_handle_files(&config)?;
         self.info.config.apply_update(meta);
 
         if let Some(resolved) = self.latest_version() {
@@ -145,7 +145,7 @@ impl Server {
     }
 
     /// Copy settings files into the world directory
-    fn create_copy_files(&self, config: &CreateConfig) {
+    fn create_handle_files(&self, config: &CreateConfig) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(path) = &config.map_gen_settings {
             self.copy_file(path, "map-gen-settings.json");
         }
@@ -154,11 +154,13 @@ impl Server {
             self.copy_file(path, "map-settings.json")
         }
 
-        self.import_copy_files(&config.import);
+        self.import_handle_files(&config.import)
     }
 
     /// Copy settings files into the world directory
-    pub fn import_copy_files(&self, config: &ImportConfig) {
+    pub fn import_handle_files(
+        &self, config: &ImportConfig,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(path) = &config.server_settings {
             self.copy_file(path, "server-settings.json");
         }
@@ -174,9 +176,16 @@ impl Server {
             serde_json::to_string(&admins).unwrap(),
         )
         .expect("Could not write file");
+
+        if let Some(mod_list_file) = &config.mod_list {
+            let mods = load_mod_list_json(mod_list_file)?;
+            self.add_mods(mods)?;
+        }
+
+        Ok(())
     }
 
-    /// Link a mod into `mods/` folder of this world
+    /// List all mods installed on this server
     pub fn mods(&self) -> Vec<ModInfo> {
         let mut pb = self.dir.clone();
         pb.push("factorio");

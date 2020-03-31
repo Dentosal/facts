@@ -144,6 +144,10 @@ pub struct ImportConfig {
     /// Add server admins
     #[structopt(long)]
     pub add_admin: Vec<String>,
+
+    /// Import mods from mod-list.json
+    #[structopt(long)]
+    pub mod_list: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, StructOpt, Deserialize, Serialize)]
@@ -168,6 +172,7 @@ pub struct CreateConfig {
 #[derive(Debug, StructOpt)]
 #[structopt(author, about)]
 #[structopt(rename_all = "kebab-case")]
+#[allow(clippy::large_enum_variant)]
 pub enum Args {
     /// Creates a new server, downloading necessary binaries and data files
     Create {

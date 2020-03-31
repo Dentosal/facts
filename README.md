@@ -23,6 +23,7 @@ Create and run a world with default settings with
 * `--server-settings map-settings.json` to specify server settings
 * `--server-adminlist server-adminlist.json` to specify server admin list
 * `--add-admin AdminUserName` to add server admins
+* `--mod-list mod-list.json` to specify mods from an exising mod list
 * `--autoupdate SETTING`
   * `enabled` automatically apply updates when no players are online (default)
   * `forced` immediately restart when updates are available, kicking out players
