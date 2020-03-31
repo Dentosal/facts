@@ -32,7 +32,8 @@ static SIGINT_CATCH: AtomicBool = AtomicBool::new(false);
 
 #[paw::main]
 fn main(args: Args) {
-    env_logger::Builder::from_env("FACTS_LOG").init();
+    let env = env_logger::Env::default().filter_or("FACTS_LOG", "info");
+    env_logger::init_from_env(env);
 
     ctrlc::set_handler(move || {
         // SIGINT is automatically transmitted to child processes as well
