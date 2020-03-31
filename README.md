@@ -2,6 +2,11 @@
 
 Easily create and manage multiple servers. Automatically update to latest factorio.
 
+## Installation
+
+Requires [latest Rust nightly](https://rustup.rs/). Then simply run `cargo install --path .` on the repository root.
+
+
 ## Usage
 
 ### Quickstart
