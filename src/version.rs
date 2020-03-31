@@ -9,6 +9,28 @@ use crate::dirs;
 use crate::download::LatestReleases;
 use crate::error::InvalidVersionNumber;
 
+#[derive(Debug, Clone, Copy)]
+pub enum EitherVersion {
+    Version3(Version),
+    Version2(Version2),
+}
+impl EitherVersion {
+    pub fn try_from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        if s.chars().filter(|c| *c == '.').count() == 1 {
+            Ok(Self::Version2(Version2::try_from_str(s)?))
+        } else {
+            Ok(Self::Version3(Version::try_from_str(s)?))
+        }
+    }
+
+    pub fn includes(self, version: Version) -> bool {
+        match self {
+            Self::Version2(v) => v.includes(version),
+            Self::Version3(v) => v.includes(version),
+        }
+    }
+}
+
 /// Semver-like three-segment version number,
 /// representing an exact released version
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
@@ -33,6 +55,10 @@ impl Version {
 
     pub fn location(self) -> Result<PathBuf, PathBuf> {
         dirs::version_data(self)
+    }
+
+    pub fn includes(self, version: Version) -> bool {
+        self == version
     }
 }
 impl fmt::Display for Version {

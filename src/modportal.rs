@@ -2,17 +2,18 @@ use reqwest::{
     blocking::{Client, ClientBuilder},
     header, StatusCode,
 };
+use serde::Deserialize;
 use serde_json::json;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::copy;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::{LoginCredentials, TokenCredentials};
 use crate::dirs;
 use crate::error::{
     InternalDataModified, LoginFailed, NoMatchingModVersions, NoSuchMod, NotLoggedIn,
 };
-use crate::version::{Version, Version2};
+use crate::version::{EitherVersion, Version};
 
 const INVALID_DATA: &str = "Invalid response from factorio API";
 
@@ -78,6 +79,7 @@ impl ModDownloader {
 
         dirs::create_mods_dir();
         if mod_info.path().exists() {
+            log::trace!("Mod {:?} already downloaded", mod_info);
             return Ok(mod_info);
         }
 
@@ -88,6 +90,8 @@ impl ModDownloader {
     fn download_mod(
         &self, mod_info: &ModInfo, url: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        log::trace!("Downloading mod {:?}", mod_info);
+
         let mut r = self
             .client
             .get(&format!("https://mods.factorio.com{}", url))
@@ -165,6 +169,8 @@ fn latest_version(
 ) -> Result<(ModInfo, String), Box<dyn std::error::Error>> {
     let error = Box::new(NoMatchingModVersions(name.to_owned(), game_version));
 
+    log::trace!("Fetching version information for mod {:?}", name);
+
     let resp = client
         .get(&format!("https://mods.factorio.com/api/mods/{}", name))
         .send()?;
@@ -177,7 +183,7 @@ fn latest_version(
         .releases
         .iter()
         .filter(|r| {
-            Version2::try_from_str(&r.info_json.factorio_version)
+            EitherVersion::try_from_str(&r.info_json.factorio_version)
                 .expect(INVALID_DATA)
                 .includes(game_version)
         })
